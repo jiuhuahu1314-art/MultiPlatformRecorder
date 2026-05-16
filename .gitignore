@@ -269,3 +269,8 @@ BililiveRecorder.Web/embeded/ui/
 
 # Shortcut
 *.lnk
+
+# User data (defense in depth)
+config.json
+path.json
+path.backup.json

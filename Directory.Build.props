@@ -1,8 +1,8 @@
 <Project>
     <PropertyGroup>
-        <Copyright>Copyright © 2018-2025 Genteure</Copyright>
-        <Authors>Genteure</Authors>
-        <Company>$(Authors)</Company>
+        <Copyright>Copyright © 2018-2025 Genteure (original BililiveRecorder) - Fork by MultiPlatformRecorder</Copyright>
+        <Authors>MultiPlatformRecorder</Authors>
+        <Company></Company>
         <LangVersion>11.0</LangVersion>
         <Nullable>enable</Nullable>
     </PropertyGroup>

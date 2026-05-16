@@ -4,7 +4,7 @@
     <TargetFramework>net472</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>BililiveRecorder.WPF</RootNamespace>
-    <AssemblyName>BililiveRecorder.WPF</AssemblyName>
+    <AssemblyName>MultiPlatformRecorder</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
