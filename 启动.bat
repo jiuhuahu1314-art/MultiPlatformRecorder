@@ -1,1 +1,1 @@
-@start src\App\bin\Release\net472\BililiveRecorder.WPF.exe
+@start "" "%~dp0dist\BililiveRecorder.WPF.exe"
