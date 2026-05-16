@@ -1,0 +1,287 @@
+name: Package Desktop Release
+
+# This workflow semi-automates the final step of releasing a new Desktop version.
+# It packages the installer and upgrade diffs, then creates a pull request in the
+# binary repository for review before the changes go live.
+#
+# Prerequisites:
+# - A release must have been created and the release workflow must have completed
+# - The RELEASE_REPO_PAT secret must be configured with a PAT that has:
+#   - repo scope for the Bililive/soft.danmuji.org repository
+#
+# Usage:
+# 1. Go to Actions > Package Desktop Release
+# 2. Click "Run workflow"
+# 3. Enter the workflow run ID from the release workflow
+# 4. Click "Run workflow"
+# 5. Review and merge the created pull request in Bililive/soft.danmuji.org
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Workflow run ID from the release workflow (find it in the URL of the release workflow run)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run mode - skip creating PR (for testing)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  # Squirrel version must match the version used in the project (see BililiveRecorder.WPF.csproj)
+  # Download from: https://github.com/clowd/Clowd.Squirrel/releases
+  SQUIRREL_VERSION: '2.11.1'
+  BINARY_REPO: Bililive/soft.danmuji.org
+  BINARY_REPO_PATH: BililiveRecorder
+
+jobs:
+  package:
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Download WPF-NupkgReleases artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WPF-NupkgReleases
+          path: ./nupkg
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.run_id }}
+
+      - name: Package and Create PR
+        id: package
+        env:
+          RELEASE_REPO_PAT: ${{ secrets.RELEASE_REPO_PAT }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_PAT }}
+          WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SOURCE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}
+          MAIN_REPO: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          
+          # ============================================================
+          # Step 1: Find nupkg file and extract version
+          # ============================================================
+          Write-Host "=========================================="
+          Write-Host "Step 1: Finding nupkg file"
+          Write-Host "=========================================="
+          
+          Get-ChildItem -Path ./nupkg -Recurse | ForEach-Object { Write-Host "  $($_.FullName)" }
+          
+          $nupkg = Get-ChildItem -Path ./nupkg -Filter "BililiveRecorder.*.nupkg" | Select-Object -First 1
+          if (-not $nupkg) {
+            Write-Error "No nupkg file found in ./nupkg"
+            exit 1
+          }
+          
+          $nupkgPath = $nupkg.FullName
+          Write-Host "Found nupkg: $nupkgPath"
+          
+          # Extract version from filename (BililiveRecorder.X.Y.Z.nupkg)
+          $version = $nupkg.Name -replace '^BililiveRecorder\.', '' -replace '\.nupkg$', ''
+          Write-Host "Extracted version: $version"
+          
+          # ============================================================
+          # Step 2: Download icons from main repository
+          # ============================================================
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Step 2: Downloading icons"
+          Write-Host "=========================================="
+          
+          $iconsDir = "$env:TEMP\icons"
+          New-Item -ItemType Directory -Path $iconsDir -Force | Out-Null
+          
+          # Use the release tag to get icons matching the release version
+          $installerIconUrl = "https://raw.githubusercontent.com/$env:MAIN_REPO/v$version/BililiveRecorder.WPF/installer.ico"
+          $appIconUrl = "https://raw.githubusercontent.com/$env:MAIN_REPO/v$version/BililiveRecorder.WPF/ico.ico"
+          
+          $iconPath = "$iconsDir\installer.ico"
+          $appIconPath = "$iconsDir\ico.ico"
+          
+          Write-Host "Downloading installer icon from: $installerIconUrl"
+          Invoke-WebRequest -Uri $installerIconUrl -OutFile $iconPath
+          
+          Write-Host "Downloading app icon from: $appIconUrl"
+          Invoke-WebRequest -Uri $appIconUrl -OutFile $appIconPath
+          
+          Write-Host "Icons downloaded to: $iconsDir"
+          
+          # ============================================================
+          # Step 3: Download and extract Squirrel tools
+          # ============================================================
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Step 3: Downloading Squirrel tools"
+          Write-Host "=========================================="
+          
+          $squirrelUrl = "https://github.com/clowd/Clowd.Squirrel/releases/download/${{ env.SQUIRREL_VERSION }}/SquirrelTools-${{ env.SQUIRREL_VERSION }}.zip"
+          $squirrelZip = "$env:TEMP\SquirrelTools.zip"
+          $squirrelDir = "$env:TEMP\SquirrelTools"
+          
+          Write-Host "Downloading from: $squirrelUrl"
+          Invoke-WebRequest -Uri $squirrelUrl -OutFile $squirrelZip
+          
+          Write-Host "Extracting to: $squirrelDir"
+          Expand-Archive -Path $squirrelZip -DestinationPath $squirrelDir -Force
+          
+          $squirrelExe = Get-ChildItem -Path $squirrelDir -Filter "Squirrel.exe" -Recurse | Select-Object -First 1
+          if (-not $squirrelExe) {
+            Write-Error "Squirrel.exe not found in extracted tools"
+            exit 1
+          }
+          Write-Host "Found Squirrel.exe: $($squirrelExe.FullName)"
+          
+          # ============================================================
+          # Step 4: Clone binary repository to temp folder
+          # ============================================================
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Step 4: Cloning binary repository"
+          Write-Host "=========================================="
+          
+          $binaryRepoDir = "$env:TEMP\binary-repo"
+          if (Test-Path $binaryRepoDir) {
+            Remove-Item -Path $binaryRepoDir -Recurse -Force
+          }
+          
+          Write-Host "Cloning to: $binaryRepoDir"
+          # Use gh CLI for cloning which handles authentication via GH_TOKEN
+          gh repo clone "${{ env.BINARY_REPO }}" $binaryRepoDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          
+          $destPath = Join-Path $binaryRepoDir "${{ env.BINARY_REPO_PATH }}"
+          Write-Host "Release destination: $destPath"
+          
+          # ============================================================
+          # Step 5: Run Squirrel releasify
+          # ============================================================
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Step 5: Running Squirrel releasify"
+          Write-Host "=========================================="
+          
+          Write-Host "  Package: $nupkgPath"
+          Write-Host "  Destination: $destPath"
+          Write-Host "  Installer icon: $iconPath"
+          Write-Host "  App icon: $appIconPath"
+          
+          & $squirrelExe.FullName releasify -p "$nupkgPath" -r "$destPath" --icon "$iconPath" --appIcon "$appIconPath" -f net472
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          
+          Write-Host ""
+          Write-Host "Generated files:"
+          Get-ChildItem -Path $destPath -Recurse | ForEach-Object { Write-Host "  $($_.FullName)" }
+          
+          # ============================================================
+          # Step 6: Check for changes and commit
+          # ============================================================
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Step 6: Checking for changes"
+          Write-Host "=========================================="
+          
+          Push-Location $binaryRepoDir
+          try {
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            $status = git status --porcelain
+            if (-not $status) {
+              Write-Host "No changes detected in the binary repository"
+              Write-Host "::warning::No changes detected; no PR will be created."
+              if ($env:GITHUB_STEP_SUMMARY) {
+                Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### No changes detected`nNo pull request was created because there were no changes to commit."
+              }
+              exit 0
+            }
+            
+            Write-Host "Changes detected (git status --porcelain):"
+            Write-Host $status
+            
+            $branchName = "release/BililiveRecorder-$version"
+            Write-Host "Creating branch: $branchName"
+            
+            git checkout -b $branchName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            
+            git add -A
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            
+            git commit -m "Release BililiveRecorder v$version"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            
+            # ============================================================
+            # Step 7: Push and create PR (or show dry run info)
+            # ============================================================
+            Write-Host ""
+            Write-Host "=========================================="
+            Write-Host "Step 7: Push and create PR"
+            Write-Host "=========================================="
+            
+            if ($env:DRY_RUN -eq "true") {
+              Write-Host "DRY RUN MODE: Showing detailed changes"
+              Write-Host ""
+              Write-Host "=========================================="
+              Write-Host "Git Status:"
+              Write-Host "=========================================="
+              git status
+              Write-Host ""
+              Write-Host "=========================================="
+              Write-Host "Git Diff --stat:"
+              Write-Host "=========================================="
+              git diff --stat HEAD~1
+              Write-Host ""
+              Write-Host "=========================================="
+              Write-Host "Files that would be committed:"
+              Write-Host "=========================================="
+              git diff --name-only HEAD~1
+              Write-Host ""
+              Write-Host "=========================================="
+              Write-Host "Git Log (last commit):"
+              Write-Host "=========================================="
+              git log -1 --oneline
+              Write-Host ""
+              Write-Host "DRY RUN COMPLETE: No changes pushed, no PR created."
+            } else {
+              # Setup gh CLI as Git credential helper for authentication
+              gh auth setup-git
+              
+              Write-Host "Pushing branch..."
+              git push -u origin $branchName
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              
+              Write-Host "Creating pull request..."
+              $prTitle = "Release BililiveRecorder v$version"
+              $prBody = "Release BililiveRecorder v$version`n`nSource: $env:SOURCE_RUN_URL"
+              
+              gh pr create --title "$prTitle" --body "$prBody" --base master --head "$branchName"
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+          } finally {
+            Pop-Location
+          }
+          
+          # ============================================================
+          # Summary
+          # ============================================================
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Package Desktop Release Summary"
+          Write-Host "=========================================="
+          Write-Host "Version: $version"
+          Write-Host "Dry Run: $($env:DRY_RUN)"
+          
+          if ($env:DRY_RUN -eq "true") {
+            Write-Host ""
+            Write-Host "DRY RUN MODE: Changes were prepared but NOT pushed or PR created."
+            Write-Host "Run the workflow again without dry run to create the PR."
+          } else {
+            Write-Host ""
+            Write-Host "SUCCESS: A pull request has been created in ${{ env.BINARY_REPO }}"
+            Write-Host "Please review and merge the PR to complete the release."
+          }
