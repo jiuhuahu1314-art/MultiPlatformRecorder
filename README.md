@@ -11,16 +11,16 @@
 ## 使用
 
 1. 安装 Python 3.10+，运行 `pip install streamget`
-2. 编译或下载 Release 后双击 exe 运行
+2. 编译后双击根目录的 **`启动.bat`**
 3. 输入直播间链接，开播自动录制
 
+编译产物也在 `src\App\bin\Release\net472\BililiveRecorder.WPF.exe`
 ## 构建
 
 ```bash
 dotnet build src\App\MultiPlatformRecorder.csproj -c Release
 ```
 
-编译产物：`src\App\bin\Release\net472\MultiPlatformRecorder.exe`
 
 ## 平台支持
 
@@ -29,6 +29,7 @@ dotnet build src\App\MultiPlatformRecorder.csproj -c Release
 | B站 | ✅ | 弹幕/修复/metadata 完整支持 |
 | 斗鱼/虎牙/抖音/YY | ✅ | |
 | Twitch/YouTube | ⚠️ | 需要海外代理 |
+还有原项目的其他网站，但没一一测试
 
 ## 鸣谢
 
