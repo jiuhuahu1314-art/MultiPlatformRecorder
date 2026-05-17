@@ -267,6 +267,9 @@ BililiveRecorder.Cli/Properties/launchSettings.json
 **/*.received.*
 BililiveRecorder.Web/embeded/ui/
 
+# FFmpeg (download manually: 98 MB, network-enabled build)
+dist/ffmpeg/
+
 # Shortcut
 *.lnk
 

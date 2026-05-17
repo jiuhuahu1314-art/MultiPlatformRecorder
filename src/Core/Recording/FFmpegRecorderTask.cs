@@ -164,14 +164,9 @@ namespace BililiveRecorder.Core.Recording
 
         private static string? FindFFmpeg()
         {
-            var dlr = Path.Combine(AppContext.BaseDirectory, "..", "DouyinLiveRecorder_v4.0.7", "ffmpeg", "ffmpeg.exe");
             var candidates = new[]
             {
-                dlr,
-                Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
-                Path.Combine(AppContext.BaseDirectory, "..", "ffmpeg.exe"),
-                Path.Combine(AppContext.BaseDirectory, "..", "..", "ffmpeg.exe"),
-                Path.Combine(AppContext.BaseDirectory, "lib", "miniffmpeg"),
+                Path.Combine(AppContext.BaseDirectory, "ffmpeg", "ffmpeg.exe"),
                 "ffmpeg.exe"
             };
             foreach (var c in candidates)

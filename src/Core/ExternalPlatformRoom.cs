@@ -50,6 +50,25 @@ namespace BililiveRecorder.Core
             if (string.IsNullOrEmpty(this.bridgeScriptPath) || !File.Exists(this.bridgeScriptPath))
                 this.logger.Error("找不到 platform_bridge.py ({Path})，无法获取流地址", this.bridgeScriptPath);
 
+            roomConfig.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(RoomConfig.AutoRecord)) return;
+                if (roomConfig.AutoRecord)
+                {
+                    this.logger.Information("自动录制已开启");
+                    this.autoRecordForThisSession = true;
+                    if (this.streaming)
+                        StartRecord();
+                }
+                else
+                {
+                    this.logger.Information("自动录制已关闭");
+                    this.autoRecordForThisSession = false;
+                    if (this.recordTask != null)
+                        this.recordTask.RequestStop();
+                }
+            };
+
             _ = Task.Run(async () =>
             {
                 await Task.Delay(1500);
@@ -194,7 +213,8 @@ namespace BililiveRecorder.Core
                         {
                             this.streamUrl = result.stream_url;
                             this.logger.Information("检测到直播中: {Name} - {Title}", result.anchor_name, result.title);
-                            this.StartRecord();
+                            if (this.autoRecordForThisSession && this.RoomConfig.AutoRecord)
+                                this.StartRecord();
                         }
                         else if (result.is_live)
                         {
