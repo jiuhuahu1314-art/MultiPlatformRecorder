@@ -30,6 +30,7 @@ namespace BililiveRecorder.WPF
     internal static class Program
     {
         private const int CODE__WPF = 0x5F_57_50_46;
+        private const string SentryDsn = "";
 
         internal static readonly LoggingLevelSwitch levelSwitchGlobal;
         internal static readonly LoggingLevelSwitch levelSwitchConsole;
@@ -54,32 +55,35 @@ namespace BililiveRecorder.WPF
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
             TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
             Log.Logger = logger;
-            SentrySdk.ConfigureScope(s =>
+            if (!string.IsNullOrEmpty(SentryDsn))
             {
-                s.SetTag("fullsemver", GitVersionInformation.FullSemVer);
-            });
-            _ = SentrySdk.ConfigureScopeAsync(async s =>
-            {
-                var path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location), "..", "packages", ".betaId"));
-                for (var i = 0; i < 10; i++)
+                SentrySdk.ConfigureScope(s =>
                 {
-                    if (i != 0)
-                        await Task.Delay(TimeSpan.FromSeconds(5));
-                    try
+                    s.SetTag("fullsemver", GitVersionInformation.FullSemVer);
+                });
+                _ = SentrySdk.ConfigureScopeAsync(async s =>
+                {
+                    var path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location), "..", "packages", ".betaId"));
+                    for (var i = 0; i < 10; i++)
                     {
-                        if (!File.Exists(path))
-                            continue;
-                        var content = File.ReadAllText(path);
-                        if (Guid.TryParse(content, out var id))
+                        if (i != 0)
+                            await Task.Delay(TimeSpan.FromSeconds(5));
+                        try
                         {
-                            s.User.Id = id.ToString();
-                            return;
+                            if (!File.Exists(path))
+                                continue;
+                            var content = File.ReadAllText(path);
+                            if (Guid.TryParse(content, out var id))
+                            {
+                                s.User.Id = id.ToString();
+                                return;
+                            }
                         }
+                        catch (Exception)
+                        { }
                     }
-                    catch (Exception)
-                    { }
-                }
-            });
+                });
+            }
             ServicePointManager.Expect100Continue = false;
             update = new Update(logger);
         }
@@ -311,7 +315,7 @@ namespace BililiveRecorder.WPF
                 .WriteTo.Async(l => l.File(new CompactJsonFormatter(), logFilePath, shared: true, rollingInterval: RollingInterval.Day, rollOnFileSizeLimit: true))
                 .WriteTo.Sentry(o =>
                 {
-                    o.Dsn = ""; // 已禁用
+                    o.Dsn = SentryDsn;
                     o.SendDefaultPii = false;
                     o.IsGlobalModeEnabled = true;
                     o.DisableAppDomainUnhandledExceptionCapture();

@@ -80,7 +80,6 @@ namespace BililiveRecorder.Core
         {
             var candidates = new[]
             {
-                "E:\\keyan\\python.exe",
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python", "python.exe"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Python", "Python313", "python.exe"),
                 "python.exe",
