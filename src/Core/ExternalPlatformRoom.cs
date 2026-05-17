@@ -78,23 +78,54 @@ namespace BililiveRecorder.Core
 
         private static string FindPython()
         {
+            // Search PATH directories first (finds user's default python without hardcoding paths)
+            var pathDirs = (Environment.GetEnvironmentVariable("PATH") ?? "")
+                .Split(new[] { Path.PathSeparator }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var dir in pathDirs)
+            {
+                try
+                {
+                    var test = Path.Combine(dir.Trim(), "python.exe");
+                    if (File.Exists(test)) return Path.GetFullPath(test);
+                }
+                catch { }
+            }
+            foreach (var dir in pathDirs)
+            {
+                try
+                {
+                    var test = Path.Combine(dir.Trim(), "python3.exe");
+                    if (File.Exists(test)) return Path.GetFullPath(test);
+                }
+                catch { }
+            }
+
+            // Fall back to well-known install paths
             var candidates = new[]
             {
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python", "python.exe"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Python", "Python313", "python.exe"),
-                "python.exe",
-                "python3.exe",
             };
             foreach (var c in candidates)
             {
                 try
                 {
                     if (File.Exists(c)) return Path.GetFullPath(c);
-                    using var p = Process.Start(new ProcessStartInfo(c, "--version") { UseShellExecute = false, CreateNoWindow = true });
-                    if (p != null) { p.Close(); return c; }
                 }
                 catch { }
             }
+
+            // Last resort: try bare names via Process.Start (searches PATH at exec time)
+            foreach (var name in new[] { "python.exe", "python3.exe" })
+            {
+                try
+                {
+                    using var p = Process.Start(new ProcessStartInfo(name, "--version") { UseShellExecute = false, CreateNoWindow = true });
+                    if (p != null) { p.Close(); return name; }
+                }
+                catch { }
+            }
+
             return "python.exe";
         }
 
@@ -120,7 +151,7 @@ namespace BililiveRecorder.Core
         {
             try
             {
-                if (!File.Exists(this.pythonPath))
+                if (Path.IsPathRooted(this.pythonPath ?? "") && !File.Exists(this.pythonPath))
                 {
                     this.logger.Error("Python 不存在: {Path}", this.pythonPath);
                     return null;
